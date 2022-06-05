@@ -12,70 +12,42 @@ gcc sctpserver.c -o server -lsctp
 #include <string.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #include <netinet/sctp.h> // Novos includes
 #include <sys/types.h>
 
 #define ECHOMAX 1024
+#define ECHOMIN 512
 
-void client(int argc, char *argv[]);
-void server(int argc, char *argv[]);
-// char **receive_command(char command[ECHOMAX]);
-// void **receive_message(char message[ECHOMAX]);
+struct arg_struct {
+    int sockfd;
+		int PORT;
+};
 
-void client(int argc, char *argv[]) {
-  int rem_sockfd;
-	char linha[ECHOMAX];
+struct client_arg_struct {
+		int PORT;
+		char *server_addr_ip;
+};
 
-  struct sockaddr_in rem_addr = {
-		.sin_family = AF_INET, /* familia do protocolo*/
-		.sin_addr.s_addr = inet_addr(argv[2]), /* endereco IP local */
-		.sin_port = htons(atoi(argv[1])), /* porta local  */
-		//sin_zero = 0, /* por algum motivo pode se botar isso em 0 usando memset() */
-	};
+struct send_arg_struct {
+		int sockfd;
+		int PORT;
+		char *server_addr_ip;
+};
 
-  rem_sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
-	if (rem_sockfd < 0) {
-		perror("Criando stream socket");
-		exit(1);
-	}
+int *client(struct client_arg_struct *args);
+void *server(struct arg_struct *args);
+char *execute_command(char command[ECHOMAX]);
+void *receive_thread(struct arg_struct *args);
 
-	printf("> Conectando no servidor '%s:%s'\n", argv[2], argv[1]);
-
-  if (connect(rem_sockfd, (struct sockaddr *) &rem_addr, sizeof(rem_addr)) < 0) {
-		perror("Conectando stream socket");
-		exit(1);
-	}
-
-  do {
-    fgets (linha, ECHOMAX, stdin);
-    linha[strcspn(linha, "\n")] = 0;
-
-    sctp_sendmsg(rem_sockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
-
-    sctp_recvmsg(rem_sockfd, &linha, sizeof(linha), NULL, 0, 0, 0);
-		printf("Recebi %s\n", linha);
-  } while(strcmp(linha,"exit"));
-
-  close(rem_sockfd);
-}
-
-void server(int argc, char *argv[]) {
-  int loc_sockfd, loc_newsockfd, tamanho;
-	char linha[ECHOMAX];
-
-  struct sockaddr_in loc_addr = {
+int main(int argc, char *argv[]) {
+	int loc_sockfd;
+	struct sockaddr_in loc_addr = {
 		.sin_family = AF_INET, /* familia do protocolo */
-		.sin_addr.s_addr = INADDR_ANY, /* endereco IP local */
-		.sin_port = htons(atoi(argv[1])), /* porta local */
+		.sin_addr.s_addr = htonl(INADDR_ANY), /* endereco IP local */
+		.sin_port = htons(4000), /* porta local */
 		//.sin_zero = 0, /* por algum motivo pode se botar isso em 0 usando memset() */
-	};
-
-  struct sctp_initmsg initmsg = {
-		.sinit_num_ostreams = 5, /* Número de streams que se deseja mandar. */
-  		.sinit_max_instreams = 5, /* Número máximo de streams se deseja receber. */
-  		.sinit_max_attempts = 4, /* Número de tentativas até remandar INIT. */
-  		/*.sinit_max_init_timeo = 60000, Tempo máximo em milissegundos para mandar INIT antes de abortar. Default 60 segundos.*/
 	};
 
   loc_sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP); // Mudança protocolo '0' => 'IPPROTO_SCTP'
@@ -90,33 +62,178 @@ void server(int argc, char *argv[]) {
 		exit(1);
 	}
 
-  if (setsockopt (loc_sockfd, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof (initmsg)) < 0){
+  listen(loc_sockfd, 5); // Mudado para initmsg.sinit_max_instreams.
+
+	struct arg_struct server_conn = {
+		.sockfd = loc_sockfd,
+		.PORT = 4000,
+	};
+	pthread_t tid;
+	struct arg_struct servers[argc];
+	int i = 0;
+
+	for (; i < argc - 1; i++) {
+		pthread_create(&tid, 0, &receive_thread, (struct arg_struct *)&server_conn); 
+	}
+	
+	int prosseguir;
+  printf("Iniciar conexão?\n1 -> Sim\n0 -> Não\n");
+	scanf("%d", &prosseguir);
+
+	if (prosseguir == 0) {
+		printf("Encerrando conexão.\n");
+		exit(1);
+	}
+
+	printf("Iniciando conexão.\n");
+	
+	struct send_arg_struct clients[argc];
+	i = 0;
+	for (; i < argc - 1; i++) {
+		struct client_arg_struct client_conn = {
+			.PORT = 4000,
+			.server_addr_ip = argv[i + 1],
+		};
+		int client_sock = client((struct client_arg_struct *)&client_conn);
+		clients[i].sockfd = client_sock;
+		clients[i].PORT = client_conn.PORT;
+		clients[i].server_addr_ip = client_conn.server_addr_ip;
+	}
+
+	char linha[ECHOMAX];
+	do {
+		printf("Mensagem: ");
+		scanf("%s", &linha);
+		i = 0;
+		for (; i < argc - 1; i++) {
+			sctp_sendmsg(clients[i].sockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
+			// char response[ECHOMAX];
+			// sctp_recvmsg(loc_sockfd, &response, sizeof(response), NULL, 0, 0, 0);
+			// printf(response);
+		}
+		
+	} while(1);
+	
+	for (; i < argc - 1; i++) {
+		close(clients[i].sockfd);
+	}
+
+	return 0;
+}
+
+int *client(struct client_arg_struct *args) {
+	printf("Iniciando conexão...\n");
+	char linha[ECHOMAX];
+
+	int rem_sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
+
+  struct sockaddr_in rem_addr = {
+		.sin_family = AF_INET, /* familia do protocolo*/
+		.sin_addr.s_addr = inet_addr(args->server_addr_ip), /* endereco IP local */
+		.sin_port = htons(args->PORT), /* porta local  */
+	};
+
+	printf("> Conectando no servidor '%s:%d'\n", args->server_addr_ip, args->PORT);
+
+  if (connect(rem_sockfd, (struct sockaddr *) &rem_addr, sizeof(rem_addr)) < 0) {
+		perror("Conectando stream socket");
+		exit(1);
+	}
+
+	return rem_sockfd;
+}
+
+void *receive_thread(struct arg_struct *args)
+{
+	while (1)
+	{
+		sleep(2);
+		server(args);
+	}
+}
+
+void *server(struct arg_struct *args) {
+  int tamanho;
+	char linha[ECHOMAX];
+	fd_set current_sockets, ready_sockets;
+
+	int loc_sockfd = args->sockfd;
+
+	struct sctp_initmsg initmsg = {
+		.sinit_num_ostreams = 5, /* Número de streams que se deseja mandar. */
+		.sinit_max_instreams = 5, /* Número máximo de streams se deseja receber. */
+		.sinit_max_attempts = 4, /* Número de tentativas até remandar INIT. */
+		/*.sinit_max_init_timeo = 60000, Tempo máximo em milissegundos para mandar INIT antes de abortar. Default 60 segundos.*/
+	};
+
+  struct sockaddr_in loc_addr = {
+		.sin_family = AF_INET, /* familia do protocolo */
+		.sin_addr.s_addr = htonl(INADDR_ANY), /* endereco IP local */
+		.sin_port = htons(args->PORT), /* porta local */
+	};
+
+	if (setsockopt (loc_sockfd, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof (initmsg)) < 0){
 		perror("setsockopt(initmsg)");
 		exit(1);
   }
 
-  listen(loc_sockfd, initmsg.sinit_max_instreams); // Mudado para initmsg.sinit_max_instreams.
-	printf("> aguardando conexao\n");
+	FD_ZERO(&current_sockets);
+	FD_SET(loc_sockfd, &current_sockets);
+	int k = 0;
+	while (1) {
+		k++;
+		ready_sockets = current_sockets;
 
-  tamanho = sizeof(struct sockaddr_in);
-  loc_newsockfd = accept(loc_sockfd, (struct sockaddr *)&loc_addr, &tamanho);
+		if (select(FD_SETSIZE, &ready_sockets, NULL, NULL, NULL) < 0) {
+			perror("ERRO :(");
+			exit(EXIT_FAILURE);
+		}
 
-  do {
-    sctp_recvmsg(loc_newsockfd, &linha, sizeof(linha), NULL, 0, 0, 0);
-		printf("Recebi %s\n", linha);
+		int i = 0;
+		for (i; i < FD_SETSIZE; ++i) {
+			if (FD_ISSET(i, &ready_sockets)) {
+				if (i == loc_sockfd) {
+					int loc_newsockfd;
+					tamanho = sizeof(struct sockaddr_in);
+					if ((loc_newsockfd = accept(loc_sockfd, (struct sockaddr *)&loc_addr, &tamanho)) < 0) {
+						perror("accept falhou :(");
+						exit(EXIT_FAILURE);
+					}
+					FD_SET(loc_newsockfd, &current_sockets);
+				} else {
+					sctp_recvmsg(i, &linha, sizeof(linha), NULL, 0, 0, 0);
+					printf("serverRecebi %s\n", linha);
+					char *result = execute_command(linha);
+					strcpy(linha, result);
+					printf(linha);
+					// sctp_sendmsg(loc_sockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
 
-    sctp_sendmsg(loc_newsockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
-		printf("Renvia %s\n", linha);
-  } while(strcmp(linha,"exit"));
+					FD_CLR(i, &current_sockets);
+				}
+			}
+		}
 
-  close(loc_sockfd);
-	close(loc_newsockfd);
+		if (k == (FD_SETSIZE * 2))
+				break;
+	}
+
+  
+  // close(loc_sockfd);
+	// close(loc_newsockfd);
 }
 
-int main(int argc, char *argv[]) {
-  char port = argv[1];
-  char server_ip = argv[2];
-
-  client(argc, argv);
-  server(argc, argv);
+char *execute_command(char command[ECHOMAX]) {
+	FILE *fp;
+	char buffer[ECHOMAX];
+	fp = popen(command, "r");
+	int i = 0;
+	while (1)
+	{
+		buffer[i] = fgetc(fp); // reading the file
+		if (buffer[i] == EOF) break;
+		++i;
+	}
+	pclose(fp);
+		
+	return buffer;
 }
