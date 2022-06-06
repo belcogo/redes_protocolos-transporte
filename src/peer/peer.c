@@ -115,8 +115,7 @@ int main(int argc, char *argv[]) {
 		}
 		char *result = execute_command(linha);
 		strcpy(linha, result);
-		printf("\n%s\nLOCAL\n%s\n\n%s\n%s\n", divider, divider, linha, divider);
-		
+		printf("\n%s\nLOCAL\n%s\n\n%s\n%s\n", divider, divider, linha, divider);		
 	} while(1);
 	
 	for (; i < argc - 1; i++) {
@@ -185,6 +184,7 @@ void *server(struct arg_struct *args) {
 	FD_ZERO(&current_sockets);
 	FD_SET(loc_sockfd, &current_sockets);
 	int k = 0;
+	int loc_newsockfd;
 	while (1) {
 		k++;
 		ready_sockets = current_sockets;
@@ -197,7 +197,6 @@ void *server(struct arg_struct *args) {
 		int i = 0;
 		for (i; i < FD_SETSIZE; ++i) {
 			if (FD_ISSET(i, &ready_sockets)) {
-				int loc_newsockfd;
 				if (i == loc_sockfd) {
 					tamanho = sizeof(struct sockaddr_in);
 					if ((loc_newsockfd = accept(loc_sockfd, (struct sockaddr *)&loc_addr, &tamanho)) < 0) {
@@ -220,6 +219,9 @@ void *server(struct arg_struct *args) {
 		if (k == (FD_SETSIZE * 2))
 				break;
 	}
+
+	close(loc_newsockfd);
+	close(loc_sockfd);
 }
 
 char *execute_command(char command[ECHOMAX]) {
