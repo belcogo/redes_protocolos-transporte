@@ -107,10 +107,13 @@ int main(int argc, char *argv[]) {
 		i = 0;
 		for (; i < argc - 1; i++) {
 			sctp_sendmsg(clients[i].sockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
-			// char response[ECHOMAX];
-			// sctp_recvmsg(loc_sockfd, &response, sizeof(response), NULL, 0, 0, 0);
-			// printf(response);
+			char response[ECHOMAX];
+			sctp_recvmsg(clients[i].sockfd, &response, sizeof(response), NULL, 0, 0, 0);
+			printf(response);
 		}
+		char *result = execute_command(linha);
+		strcpy(linha, result);
+		printf(linha);
 		
 	} while(1);
 	
@@ -192,8 +195,8 @@ void *server(struct arg_struct *args) {
 		int i = 0;
 		for (i; i < FD_SETSIZE; ++i) {
 			if (FD_ISSET(i, &ready_sockets)) {
+				int loc_newsockfd;
 				if (i == loc_sockfd) {
-					int loc_newsockfd;
 					tamanho = sizeof(struct sockaddr_in);
 					if ((loc_newsockfd = accept(loc_sockfd, (struct sockaddr *)&loc_addr, &tamanho)) < 0) {
 						perror("accept falhou :(");
@@ -206,7 +209,7 @@ void *server(struct arg_struct *args) {
 					char *result = execute_command(linha);
 					strcpy(linha, result);
 					printf(linha);
-					// sctp_sendmsg(loc_sockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
+					sctp_sendmsg(loc_newsockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
 
 					FD_CLR(i, &current_sockets);
 				}
