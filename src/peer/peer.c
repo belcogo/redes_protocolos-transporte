@@ -36,6 +36,8 @@ struct send_arg_struct {
 		char *server_addr_ip;
 };
 
+char *divider = "-----------------------------------------------------";
+
 int *client(struct client_arg_struct *args);
 void *server(struct arg_struct *args);
 char *execute_command(char command[ECHOMAX]);
@@ -102,18 +104,18 @@ int main(int argc, char *argv[]) {
 
 	char linha[ECHOMAX];
 	do {
-		printf("Mensagem: ");
+		printf("> ");
 		scanf("%s", &linha);
 		i = 0;
 		for (; i < argc - 1; i++) {
 			sctp_sendmsg(clients[i].sockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
 			char response[ECHOMAX];
 			sctp_recvmsg(clients[i].sockfd, &response, sizeof(response), NULL, 0, 0, 0);
-			printf(response);
+			printf("\n%s\nCONNECTION: %s:%d\n%s\n\n%s\n%s\n", divider, clients[i].server_addr_ip, clients[i].PORT, divider, response, divider);
 		}
 		char *result = execute_command(linha);
 		strcpy(linha, result);
-		printf(linha);
+		printf("\n%s\nLOCAL\n%s\n\n%s\n%s\n", divider, divider, linha, divider);
 		
 	} while(1);
 	
@@ -205,10 +207,9 @@ void *server(struct arg_struct *args) {
 					FD_SET(loc_newsockfd, &current_sockets);
 				} else {
 					sctp_recvmsg(i, &linha, sizeof(linha), NULL, 0, 0, 0);
-					printf("serverRecebi %s\n", linha);
+					printf("\n%s\nComando: %s\n%s\n", divider, linha, divider);
 					char *result = execute_command(linha);
 					strcpy(linha, result);
-					printf(linha);
 					sctp_sendmsg(loc_newsockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
 
 					FD_CLR(i, &current_sockets);
@@ -219,10 +220,6 @@ void *server(struct arg_struct *args) {
 		if (k == (FD_SETSIZE * 2))
 				break;
 	}
-
-  
-  // close(loc_sockfd);
-	// close(loc_newsockfd);
 }
 
 char *execute_command(char command[ECHOMAX]) {
