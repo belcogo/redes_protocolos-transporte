@@ -42,6 +42,14 @@ int *client(struct client_arg_struct *args);
 void *server(struct arg_struct *args);
 char *execute_command(char command[ECHOMAX]);
 void *receive_thread(struct arg_struct *args);
+void *client_thread(struct send_arg_struct *args);
+
+void *client_thread(struct send_arg_struct *args) {
+	char response[ECHOMAX];
+	sctp_recvmsg(args->sockfd, &response, sizeof(response), NULL, 0, 0, 0);
+	printf("\n%s\nCONNECTION: %s:%d\n%s\n\n%s\n%s\n", divider, args->server_addr_ip, args->PORT, divider, response, divider);
+	close(args->sockfd);
+}
 
 int main(int argc, char *argv[]) {
 	int loc_sockfd;
@@ -78,50 +86,43 @@ int main(int argc, char *argv[]) {
 		pthread_create(&tid, 0, &receive_thread, (struct arg_struct *)&server_conn); 
 	}
 	
-	int prosseguir;
-  printf("Iniciar conexão?\n1 -> Sim\n0 -> Não\n");
-	scanf("%d", &prosseguir);
+	// int prosseguir;
+  // printf("Iniciar conexão?\n1 -> Sim\n0 -> Não\n");
+	// scanf("%d", &prosseguir);
 
-	if (prosseguir == 0) {
-		printf("Encerrando conexão.\n");
-		exit(1);
-	}
+	// if (prosseguir == 0) {
+	// 	printf("Encerrando conexão.\n");
+	// 	exit(1);
+	// }
 
-	printf("Iniciando conexão.\n");
+	// printf("Iniciando conexão.\n");
 	
 	struct send_arg_struct clients[argc];
-	i = 0;
-	for (; i < argc - 1; i++) {
-		struct client_arg_struct client_conn = {
-			.PORT = 4000,
-			.server_addr_ip = argv[i + 1],
-		};
-		int client_sock = client((struct client_arg_struct *)&client_conn);
-		clients[i].sockfd = client_sock;
-		clients[i].PORT = client_conn.PORT;
-		clients[i].server_addr_ip = client_conn.server_addr_ip;
-	}
 
 	char linha[ECHOMAX];
 	do {
-		printf("> ");
-		scanf("%s", &linha);
+		printf("\n> ");
+		scanf(" %[^\n]", &linha);
 		i = 0;
 		for (; i < argc - 1; i++) {
-			sctp_sendmsg(clients[i].sockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
-			char response[ECHOMAX];
-			sctp_recvmsg(clients[i].sockfd, &response, sizeof(response), NULL, 0, 0, 0);
-			printf("\n%s\nCONNECTION: %s:%d\n%s\n\n%s\n%s\n", divider, clients[i].server_addr_ip, clients[i].PORT, divider, response, divider);
+			struct client_arg_struct client_conn = {
+				.PORT = 4000,
+				.server_addr_ip = argv[i + 1],
+			};
+			int client_sock = client((struct client_arg_struct *)&client_conn);
+			sctp_sendmsg(client_sock, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
+			printf("Enviado");
+			clients[i].sockfd = client_sock;
+			clients[i].PORT = client_conn.PORT;
+			clients[i].server_addr_ip = client_conn.server_addr_ip;
+			pthread_create(&tid, 0, &client_thread, &clients[i]);
 		}
 		char *result = execute_command(linha);
 		strcpy(linha, result);
 		printf("\n%s\nLOCAL\n%s\n\n%s\n%s\n", divider, divider, linha, divider);		
 	} while(1);
-	
-	for (; i < argc - 1; i++) {
-		close(clients[i].sockfd);
-	}
 
+	close(loc_sockfd);
 	return 0;
 }
 
@@ -184,7 +185,6 @@ void *server(struct arg_struct *args) {
 	FD_ZERO(&current_sockets);
 	FD_SET(loc_sockfd, &current_sockets);
 	int k = 0;
-	int loc_newsockfd;
 	while (1) {
 		k++;
 		ready_sockets = current_sockets;
@@ -198,6 +198,7 @@ void *server(struct arg_struct *args) {
 		for (i; i < FD_SETSIZE; ++i) {
 			if (FD_ISSET(i, &ready_sockets)) {
 				if (i == loc_sockfd) {
+					int loc_newsockfd;
 					tamanho = sizeof(struct sockaddr_in);
 					if ((loc_newsockfd = accept(loc_sockfd, (struct sockaddr *)&loc_addr, &tamanho)) < 0) {
 						perror("accept falhou :(");
@@ -209,7 +210,7 @@ void *server(struct arg_struct *args) {
 					printf("\n%s\nComando: %s\n%s\n", divider, linha, divider);
 					char *result = execute_command(linha);
 					strcpy(linha, result);
-					sctp_sendmsg(loc_newsockfd, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
+					sctp_sendmsg(i, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
 
 					FD_CLR(i, &current_sockets);
 				}
@@ -220,8 +221,7 @@ void *server(struct arg_struct *args) {
 				break;
 	}
 
-	close(loc_newsockfd);
-	close(loc_sockfd);
+	// close(loc_newsockfd);
 }
 
 char *execute_command(char command[ECHOMAX]) {
