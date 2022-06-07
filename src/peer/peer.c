@@ -30,26 +30,15 @@ struct server_args_struct {
 	struct sctp_initmsg initmsg;
 };
 
-struct client_arg_struct {
-	int PORT;
-	char *server_addr_ip;
-};
-
-struct send_arg_struct {
-	int sockfd;
-	int PORT;
-	char *server_addr_ip;
-};
-
 char *divider = "-----------------------------------------------------";
 
-int *client(struct client_arg_struct *args);
+int *client(struct client_args_struct *args);
 void *server(struct server_args_struct *args);
 char *execute_command(char command[ECHOMAX]);
 void *receive_thread(struct server_args_struct *args);
-void *client_thread(struct send_arg_struct *args);
+void *client_thread(struct client_args_struct *args);
 
-void *client_thread(struct send_arg_struct *args) {
+void *client_thread(struct client_args_struct *args) {
 	char response[ECHOMAX];
 	sctp_recvmsg(args->sockfd, &response, sizeof(response), NULL, 0, 0, 0);
 	printf("\n%s\nCONNECTION: %s:%d\n%s\n\n%s\n%s\n", divider, args->server_addr_ip, args->PORT, divider, response, divider);
@@ -98,7 +87,7 @@ int main(int argc, char *argv[]) {
 		pthread_create(&tid, 0, &receive_thread, (struct server_args_struct *)&server_conn); 
 	}
 	
-	struct send_arg_struct clients[argc];
+	struct client_args_struct clients[argc];
 
 	char linha[ECHOMAX];
 	do {
@@ -106,11 +95,11 @@ int main(int argc, char *argv[]) {
 		scanf(" %[^\n]", &linha);
 		i = 0;
 		for (; i < argc - 1; i++) {
-			struct client_arg_struct client_conn = {
+			struct client_args_struct client_conn = {
 				.PORT = 4000,
 				.server_addr_ip = argv[i + 1],
 			};
-			int client_sock = client((struct client_arg_struct *)&client_conn);
+			int client_sock = client((struct client_args_struct *)&client_conn);
 			sctp_sendmsg(client_sock, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
 			printf("Enviado");
 			clients[i].sockfd = client_sock;
@@ -127,7 +116,7 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-int *client(struct client_arg_struct *args) {
+int *client(struct client_args_struct *args) {
 	printf("Iniciando conexão...\n");
 	char linha[ECHOMAX];
 
