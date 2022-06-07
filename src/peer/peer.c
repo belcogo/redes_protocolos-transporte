@@ -1,9 +1,3 @@
-/*
-Para compilar:
-Precisa da bibliteca libsctp-dev
-gcc sctpserver.c -o server -lsctp
-*/
-
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h>
@@ -14,7 +8,7 @@ gcc sctpserver.c -o server -lsctp
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#include <netinet/sctp.h> // Novos includes
+#include <netinet/sctp.h>
 #include <sys/types.h>
 
 #define ECHOMAX 1024
@@ -57,7 +51,6 @@ int main(int argc, char *argv[]) {
 		.sin_family = AF_INET, /* familia do protocolo */
 		.sin_addr.s_addr = htonl(INADDR_ANY), /* endereco IP local */
 		.sin_port = htons(4000), /* porta local */
-		//.sin_zero = 0, /* por algum motivo pode se botar isso em 0 usando memset() */
 	};
 
   loc_sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP); // Mudança protocolo '0' => 'IPPROTO_SCTP'
@@ -72,7 +65,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
-  listen(loc_sockfd, 5); // Mudado para initmsg.sinit_max_instreams.
+  listen(loc_sockfd, 5);
 
 	struct arg_struct server_conn = {
 		.sockfd = loc_sockfd,
@@ -85,17 +78,6 @@ int main(int argc, char *argv[]) {
 	for (; i < argc - 1; i++) {
 		pthread_create(&tid, 0, &receive_thread, (struct arg_struct *)&server_conn); 
 	}
-	
-	// int prosseguir;
-  // printf("Iniciar conexão?\n1 -> Sim\n0 -> Não\n");
-	// scanf("%d", &prosseguir);
-
-	// if (prosseguir == 0) {
-	// 	printf("Encerrando conexão.\n");
-	// 	exit(1);
-	// }
-
-	// printf("Iniciando conexão.\n");
 	
 	struct send_arg_struct clients[argc];
 
@@ -138,8 +120,6 @@ int *client(struct client_arg_struct *args) {
 		.sin_port = htons(args->PORT), /* porta local  */
 	};
 
-	printf("> Conectando no servidor '%s:%d'\n", args->server_addr_ip, args->PORT);
-
   if (connect(rem_sockfd, (struct sockaddr *) &rem_addr, sizeof(rem_addr)) < 0) {
 		perror("Conectando stream socket");
 		exit(1);
@@ -168,7 +148,6 @@ void *server(struct arg_struct *args) {
 		.sinit_num_ostreams = 5, /* Número de streams que se deseja mandar. */
 		.sinit_max_instreams = 5, /* Número máximo de streams se deseja receber. */
 		.sinit_max_attempts = 4, /* Número de tentativas até remandar INIT. */
-		/*.sinit_max_init_timeo = 60000, Tempo máximo em milissegundos para mandar INIT antes de abortar. Default 60 segundos.*/
 	};
 
   struct sockaddr_in loc_addr = {
@@ -220,8 +199,6 @@ void *server(struct arg_struct *args) {
 		if (k == (FD_SETSIZE * 2))
 				break;
 	}
-
-	// close(loc_newsockfd);
 }
 
 char *execute_command(char command[ECHOMAX]) {
