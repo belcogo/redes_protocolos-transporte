@@ -14,28 +14,39 @@
 #define ECHOMAX 1024
 #define ECHOMIN 512
 
-struct arg_struct {
-    int sockfd;
-		int PORT;
+int SCTP_PORT = 4000;
+
+struct client_args_struct {
+	int sockfd;
+	int PORT;
+	char *server_addr_ip;
+};
+
+struct server_args_struct {
+	int sockfd;
+	int PORT;
+	char *server_addr_ip;
+	struct sockaddr_in addr;
+	struct sctp_initmsg initmsg;
 };
 
 struct client_arg_struct {
-		int PORT;
-		char *server_addr_ip;
+	int PORT;
+	char *server_addr_ip;
 };
 
 struct send_arg_struct {
-		int sockfd;
-		int PORT;
-		char *server_addr_ip;
+	int sockfd;
+	int PORT;
+	char *server_addr_ip;
 };
 
 char *divider = "-----------------------------------------------------";
 
 int *client(struct client_arg_struct *args);
-void *server(struct arg_struct *args);
+void *server(struct server_args_struct *args);
 char *execute_command(char command[ECHOMAX]);
-void *receive_thread(struct arg_struct *args);
+void *receive_thread(struct server_args_struct *args);
 void *client_thread(struct send_arg_struct *args);
 
 void *client_thread(struct send_arg_struct *args) {
@@ -50,7 +61,13 @@ int main(int argc, char *argv[]) {
 	struct sockaddr_in loc_addr = {
 		.sin_family = AF_INET, /* familia do protocolo */
 		.sin_addr.s_addr = htonl(INADDR_ANY), /* endereco IP local */
-		.sin_port = htons(4000), /* porta local */
+		.sin_port = htons(SCTP_PORT), /* porta local */
+	};
+
+	struct sctp_initmsg sock_initmsg = {
+		.sinit_num_ostreams = 5, /* Número de streams que se deseja mandar. */
+		.sinit_max_instreams = 5, /* Número máximo de streams se deseja receber. */
+		.sinit_max_attempts = 4, /* Número de tentativas até remandar INIT. */
 	};
 
   loc_sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP); // Mudança protocolo '0' => 'IPPROTO_SCTP'
@@ -65,18 +82,20 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
-  listen(loc_sockfd, 5);
+  listen(loc_sockfd, sock_initmsg.sinit_max_instreams);
 
-	struct arg_struct server_conn = {
+	struct server_args_struct server_conn = {
 		.sockfd = loc_sockfd,
-		.PORT = 4000,
+		.PORT = SCTP_PORT,
+		.addr = loc_addr,
+		.initmsg = sock_initmsg,
 	};
+
 	pthread_t tid;
-	struct arg_struct servers[argc];
 	int i = 0;
 
 	for (; i < argc - 1; i++) {
-		pthread_create(&tid, 0, &receive_thread, (struct arg_struct *)&server_conn); 
+		pthread_create(&tid, 0, &receive_thread, (struct server_args_struct *)&server_conn); 
 	}
 	
 	struct send_arg_struct clients[argc];
@@ -128,7 +147,7 @@ int *client(struct client_arg_struct *args) {
 	return rem_sockfd;
 }
 
-void *receive_thread(struct arg_struct *args)
+void *receive_thread(struct server_args_struct *args)
 {
 	while (1)
 	{
@@ -137,27 +156,17 @@ void *receive_thread(struct arg_struct *args)
 	}
 }
 
-void *server(struct arg_struct *args) {
+void *server(struct server_args_struct *args) {
   int tamanho;
 	char linha[ECHOMAX];
 	fd_set current_sockets, ready_sockets;
 
 	int loc_sockfd = args->sockfd;
+	struct sockaddr_in loc_addr = args->addr;
+	struct sctp_initmsg sock_initmsg = args->initmsg;
 
-	struct sctp_initmsg initmsg = {
-		.sinit_num_ostreams = 5, /* Número de streams que se deseja mandar. */
-		.sinit_max_instreams = 5, /* Número máximo de streams se deseja receber. */
-		.sinit_max_attempts = 4, /* Número de tentativas até remandar INIT. */
-	};
-
-  struct sockaddr_in loc_addr = {
-		.sin_family = AF_INET, /* familia do protocolo */
-		.sin_addr.s_addr = htonl(INADDR_ANY), /* endereco IP local */
-		.sin_port = htons(args->PORT), /* porta local */
-	};
-
-	if (setsockopt (loc_sockfd, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof (initmsg)) < 0){
-		perror("setsockopt(initmsg)");
+	if (setsockopt (loc_sockfd, IPPROTO_SCTP, SCTP_INITMSG, &sock_initmsg, sizeof (sock_initmsg)) < 0){
+		perror("setsockopt(sock_initmsg)");
 		exit(1);
   }
 
