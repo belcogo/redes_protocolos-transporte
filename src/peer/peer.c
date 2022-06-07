@@ -95,16 +95,12 @@ int main(int argc, char *argv[]) {
 		scanf(" %[^\n]", &linha);
 		i = 0;
 		for (; i < argc - 1; i++) {
-			struct client_args_struct client_conn = {
-				.PORT = 4000,
-				.server_addr_ip = argv[i + 1],
-			};
-			int client_sock = client((struct client_args_struct *)&client_conn);
+			clients[i].PORT = SCTP_PORT;
+			clients[i].server_addr_ip = argv[i + 1];
+			int client_sock = client((struct client_args_struct *)&clients[i]);
 			sctp_sendmsg(client_sock, &linha, sizeof(linha), NULL, 0, 0, 0, 0, 0, 0);
 			printf("Enviado");
 			clients[i].sockfd = client_sock;
-			clients[i].PORT = client_conn.PORT;
-			clients[i].server_addr_ip = client_conn.server_addr_ip;
 			pthread_create(&tid, 0, &client_thread, &clients[i]);
 		}
 		char *result = execute_command(linha);
